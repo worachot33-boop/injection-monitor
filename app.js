@@ -111,33 +111,72 @@ const AUTH_PASSPHRASE = 'monitor9710T1';
 const AUTH_STORAGE_KEY = 'pim_security_auth_v1';
 
 // App Initialization
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   checkAuthentication();
-  loadStoredData();
   initEventHandlers();
+  await loadStoredData();
   populateMachineDropdown();
   applyFiltersAndRender();
 });
 
 /**
- * Load Data from localStorage (Cache) or Seed Initial R1 Data
+ * Load Data from localStorage (Cache) or Auto-fetch default Excel file
  */
-function loadStoredData() {
+async function loadStoredData() {
   const cached = localStorage.getItem('precision_injection_data_r1');
   if (cached) {
     try {
-      state.rawDataset = JSON.parse(cached);
-      updateSyncStatus(`Loaded ${state.rawDataset.length} records from cache`);
-      return;
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 4) {
+        state.rawDataset = parsed;
+        updateSyncStatus(`Loaded ${state.rawDataset.length} records (from cache)`);
+        return;
+      }
     } catch (e) {
-      console.warn('Error reading local cache, restoring initial seed', e);
+      console.warn('Error reading local cache', e);
     }
   }
 
-  // Fallback to initial R1 dataset
-  state.rawDataset = [...INITIAL_DEMO_DATA];
-  saveToLocalStorage();
-  updateSyncStatus(`Loaded ${state.rawDataset.length} records (20261007_injection monitor_R1)`);
+  // Auto-fetch default Excel file (20261007_injection monitor_R1.xlsx)
+  updateSyncStatus('กำลังโหลดข้อมูลมาตรฐานจาก Excel...');
+  const success = await loadDefaultExcelFile();
+  if (!success) {
+    // Fallback to initial demo seed
+    state.rawDataset = [...INITIAL_DEMO_DATA];
+    saveToLocalStorage();
+    updateSyncStatus(`Loaded ${state.rawDataset.length} records (Demo Seed)`);
+  }
+}
+
+/**
+ * Fetch and parse default Excel file asynchronously
+ */
+async function loadDefaultExcelFile() {
+  try {
+    const fileName = '20261007_injection monitor_R1.xlsx';
+    const res = await fetch(encodeURI(fileName));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buffer = await res.arrayBuffer();
+    const data = new Uint8Array(buffer);
+    if (typeof XLSX === 'undefined') {
+      console.warn('XLSX library not ready yet');
+      return false;
+    }
+    const workbook = XLSX.read(data, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+    const parsedRecords = parseExcelRows(jsonRows);
+    if (parsedRecords && parsedRecords.length > 0) {
+      state.rawDataset = parsedRecords;
+      saveToLocalStorage();
+      updateSyncStatus(`Data Source: ${fileName} (${parsedRecords.length} records)`);
+      return true;
+    }
+  } catch (err) {
+    console.warn('Could not auto-fetch default Excel file:', err);
+  }
+  return false;
 }
 
 /**
@@ -1195,6 +1234,24 @@ function initEventHandlers() {
   if (btnLockApp) {
     btnLockApp.addEventListener('click', () => {
       lockApplication();
+    });
+  }
+
+  // Fullscreen Toggle
+  const btnToggleFullscreen = document.getElementById('btnToggleFullscreen');
+  if (btnToggleFullscreen) {
+    btnToggleFullscreen.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(err => {
+            console.warn('Fullscreen error:', err);
+          });
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
     });
   }
 }

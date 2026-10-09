@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Precision Injection Monitor - Daily Parameter Tracking & Modeling</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- SheetJS for Excel Reading (Local Offline with CDN Fallback) -->
+  <script src="xlsx.full.min.js"></script>
+  <script>if (typeof XLSX === 'undefined') document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');</script>
+
+  <!-- Chart.js for Trend Analytics (Local Offline with CDN Fallback) -->
+  <script src="chart.umd.min.js"></script>
+  <script>if (typeof Chart === 'undefined') document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>');</script>
+</head>
+<body class="dark-theme">
+  <!-- Top App Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <h1>PRECISION <span class="highlight">INJECTION MONITOR</span></h1>
+          <span class="subtitle">Daily Process Parameter Tracking & Setting vs Actual Drift Analytics</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <!-- Last Update Status -->
+      <div class="sync-status-box" id="syncStatusBox">
+        <span class="status-indicator-dot"></span>
+        <span class="sync-text" id="syncStatusText">Data Source: Ready</span>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="header-actions">
+        <!-- Hidden file input for Excel upload -->
+        <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" style="display: none;">
+        
+        <button class="btn btn-primary" id="btnImportExcel">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          Import Excel File
+        </button>
+
+        <button class="btn btn-outline" id="btnDownloadTemplate" title="ดาวน์โหลดตัวอย่างฟอร์ม Excel">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="12" y1="18" x2="12" y2="12"></line>
+            <polyline points="9 15 12 18 15 15"></polyline>
+          </svg>
+          Template
+        </button>
+
+        <button class="btn btn-outline" id="btnExportFiltered" title="ส่งออกข้อมูลชุดที่ฟิลเตอร์เป็น CSV">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Export
+        </button>
+
+        <button class="btn btn-outline" id="btnLockApp" title="ล็อคหน้าจอ / Logout">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          Lock
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Filter Control Bar -->
+  <section class="filter-bar-container">
+    <div class="filter-controls">
+      <!-- Machine Filter -->
+      <div class="filter-item">
+        <label for="selectMachine">Machine Number:</label>
+        <div class="custom-select-wrap">
+          <select id="selectMachine">
+            <option value="ALL">All Machines (ทั้งหมด)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Product Model Filter (Cascading) -->
+      <div class="filter-item">
+        <label for="selectProductModel">Product Model:</label>
+        <div class="custom-select-wrap">
+          <select id="selectProductModel">
+            <option value="ALL">All Models (ทุกรุ่นโมเดล)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Date Range Window Filter (Buttons) -->
+      <div class="filter-item filter-range-group">
+        <label>History Range (ข้อมูลย้อนหลัง):</label>
+        <div class="range-buttons" id="rangeButtonContainer">
+          <button class="range-btn active" data-days="30">30 วัน</button>
+          <button class="range-btn" data-days="60">60 วัน</button>
+          <button class="range-btn" data-days="120">120 วัน</button>
+          <button class="range-btn" data-days="360">360 วัน</button>
+          <button class="range-btn" data-days="ALL">ทั้งหมด (All)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Side: Filter Summary Info -->
+    <div class="filter-stats-summary">
+      <span class="filter-tag" id="tagRecordCount">Showing 0 records</span>
+      <span class="filter-tag tag-date" id="tagDateSpan">-</span>
+    </div>
+  </section>
+
+  <!-- Main Content Layout -->
+  <main class="dashboard-container">
+
+    <!-- KPI Metric Summary Row -->
+    <section class="kpi-grid">
+      <!-- KPI 1: Peak Pressure Drift -->
+      <div class="kpi-card" id="kpiPeakPressure">
+        <div class="kpi-header">
+          <span class="kpi-title">Peak Injection Pressure</span>
+          <span class="kpi-tag tag-setting" id="kpiSettingPressure">Set: - Mpa</span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-val-group">
+            <span class="kpi-value" id="kpiActualPressure">-</span>
+            <span class="kpi-unit">Mpa</span>
+          </div>
+          <span class="kpi-delta" id="kpiDeltaPressure">Δ 0.0 Mpa</span>
+        </div>
+        <div class="kpi-footer">
+          <span>Avg in Range: <strong id="kpiAvgPressure">- Mpa</strong></span>
+          <span class="badge" id="kpiBadgePressure">In Spec</span>
+        </div>
+      </div>
+
+      <!-- KPI 2: Cushion Position -->
+      <div class="kpi-card" id="kpiCushion">
+        <div class="kpi-header">
+          <span class="kpi-title">Cushion (ระยะคลายสกรู)</span>
+          <span class="kpi-tag tag-range">Target: 3.0 - 6.0 mm</span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-val-group">
+            <span class="kpi-value" id="kpiActualCushion">-</span>
+            <span class="kpi-unit">mm</span>
+          </div>
+          <span class="kpi-delta" id="kpiDeltaCushion">Stable</span>
+        </div>
+        <div class="kpi-footer">
+          <span>Avg in Range: <strong id="kpiAvgCushion">- mm</strong></span>
+          <span class="badge badge-success" id="kpiBadgeCushion">Optimal</span>
+        </div>
+      </div>
+
+      <!-- KPI 3: Fill Time -->
+      <div class="kpi-card" id="kpiFillTime">
+        <div class="kpi-header">
+          <span class="kpi-title">Filling Time (เวลาฉีด)</span>
+          <span class="kpi-tag tag-info">Injection Stage</span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-val-group">
+            <span class="kpi-value" id="kpiActualFillTime">-</span>
+            <span class="kpi-unit">sec</span>
+          </div>
+          <span class="kpi-delta" id="kpiDeltaFillTime">Normal</span>
+        </div>
+        <div class="kpi-footer">
+          <span>Avg in Range: <strong id="kpiAvgFillTime">- s</strong></span>
+          <span class="badge badge-info">Cavity Velocity</span>
+        </div>
+      </div>
+
+      <!-- KPI 4: Cycle Time & Cooling -->
+      <div class="kpi-card" id="kpiCycleTime">
+        <div class="kpi-header">
+          <span class="kpi-title">Cycle Time & Cooling</span>
+          <span class="kpi-tag tag-setting" id="kpiSettingCooling">Cooling: - s</span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-val-group">
+            <span class="kpi-value" id="kpiActualCycleTime">-</span>
+            <span class="kpi-unit">sec</span>
+          </div>
+          <span class="kpi-delta" id="kpiDeltaCycleTime">Stable</span>
+        </div>
+        <div class="kpi-footer">
+          <span>Recovery Time: <strong id="kpiActualRecovery">- s</strong></span>
+          <span class="badge badge-success">Smooth Cycle</span>
+        </div>
+      </div>
+
+      <!-- KPI 5: Temperature Envelope -->
+      <div class="kpi-card" id="kpiTemperatures">
+        <div class="kpi-header">
+          <span class="kpi-title">Barrel & Mold Avg Temp</span>
+          <span class="kpi-tag tag-temp">Thermal Profile</span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-val-group">
+            <span class="kpi-value" id="kpiNozzleTemp">-</span>
+            <span class="kpi-unit">°C (Nozzle)</span>
+          </div>
+          <span class="kpi-delta" id="kpiMoldTemp">Mold: -°C</span>
+        </div>
+        <div class="kpi-footer">
+          <span>Cavity / Core: <strong id="kpiCavityCore">-°C</strong></span>
+          <span class="badge badge-success">Balanced</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Chart Section: Setting vs Actual Daily Trend -->
+    <div class="panel-card chart-panel">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <div class="icon-chip bg-cyan">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+          </div>
+          <div>
+            <h2>Process Parameter Trend & Drift Analysis (แนวโน้มพารามิเตอร์หลัก)</h2>
+            <span class="panel-sub" id="chartSubtitle">เปรียบเทียบค่า Setting (เส้นประ) กับค่า Actual (เส้นทึบ) ตามช่วงวันที่เลือก</span>
+          </div>
+        </div>
+
+        <!-- Metric Switch Tabs -->
+        <div class="chart-tab-controls">
+          <button class="metric-tab active" data-metric="pressure">Peak Pressure (Mpa)</button>
+          <button class="metric-tab" data-metric="cushion">Cushion (mm)</button>
+          <button class="metric-tab" data-metric="fillTime">Fill Time (s)</button>
+          <button class="metric-tab" data-metric="cycleTime">Cycle Time (s)</button>
+          <button class="metric-tab" data-metric="coolingRecovery">Cooling & Recovery Time (s)</button>
+        </div>
+      </div>
+
+      <!-- Chart Canvas Container -->
+      <div class="chart-canvas-wrap" style="position: relative; height: 320px;">
+        <canvas id="trendChart"></canvas>
+      </div>
+
+      <!-- Chart Legend / Insight Bar -->
+      <div class="chart-insight-bar">
+        <div class="insight-legend">
+          <div class="legend-item"><span class="legend-line line-solid"></span> Actual Value (ค่าเกิดขึ้นจริง)</div>
+          <div class="legend-item"><span class="legend-line line-dashed"></span> Setting Setpoint (ค่าที่ตั้งไว้)</div>
+          <div class="legend-item"><span class="legend-box box-delta"></span> Parameter Drift Tolerance Band</div>
+        </div>
+        <div class="insight-stats">
+          <span id="insightSummary">Data Points: 0 | Drift Status: Normal</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEW SECTION: 7-Zone Temperature Setting vs Actual Analysis Grid -->
+    <section class="panel-card thermal-section">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <div class="icon-chip bg-amber">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
+            </svg>
+          </div>
+          <div>
+            <h2>7-Zone Thermal Profile: Setting vs Actual Breakdown</h2>
+            <span class="panel-sub">แยกกราฟอิสระ 7 โซน (Nozzle, Front, Middle, Rear, Hopper, Core, Cavity) แสดงเส้น Setting (ประ) vs Actual (ทึบ)</span>
+          </div>
+        </div>
+
+        <div class="temp-legend-bar">
+          <span class="t-legend-item"><span class="t-line-actual"></span> Actual (°C)</span>
+          <span class="t-legend-item"><span class="t-line-setting"></span> Setting (°C)</span>
+        </div>
+      </div>
+
+      <!-- 7 Temperature Charts Grid -->
+      <div class="thermal-cards-grid">
+        <!-- 1. Nozzle -->
+        <div class="thermal-card">
+          <div class="thermal-card-header">
+            <div class="t-zone-info">
+              <span class="t-zone-badge">Zone 1</span>
+              <h4>Nozzle (หัวฉีด)</h4>
+            </div>
+            <div class="t-zone-readouts">
+              <span class="t-act-readout" id="readoutActNozzle">- °C</span>
+              <span class="t-set-readout" id="readoutSetNozzle">Set: -</span>
+              <span class="t-delta-tag" id="deltaNozzle">Δ 0.0°</span>
+            </div>
+          </div>
+          <div class="mini-chart-container">
+            <canvas id="chartTempNozzle"></canvas>
+          </div>
+        </div>
+
+        <!-- 2. Front -->
+        <div class="thermal-card">
+          <div class="thermal-card-header">
+            <div class="t-zone-info">
+              <span class="t-zone-badge">Zone 2</span>
+              <h4>Front (ด้านหน้า)</h4>
+            </div>
+            <div class="t-zone-readouts">
+              <span class="t-act-readout" id="readoutActFront">- °C</span>
+              <span class="t-set-readout" id="readoutSetFront">Set: -</span>
+              <span class="t-delta-tag" id="deltaFront">Δ 0.0°</span>
+            </div>
+          </div>
+          <div class="mini-chart-container">
+            <canvas id="chartTempFront"></canvas>
+          </div>
+        </div>
+
+        <!-- 3. Middle -->
+        <div class="thermal-card">
+          <div class="thermal-card-header">
+            <div class="t-zone-info">
+              <span class="t-zone-badge">Zone 3</span>
+              <h4>Middle (ตรงกลาง)</h4>
+            </div>
+            <div class="t-zone-readouts">
+              <span class="t-act-readout" id="readoutActMiddle">- °C</span>
+              <span class="t-set-readout" id="readoutSetMiddle">Set: -</span>
+              <span class="t-delta-tag" id="deltaMiddle">Δ 0.0°</span>
+            </div>
+          </div>
+          <div class="mini-chart-container">
+            <canvas id="chartTempMiddle"></canvas>
+          </div>
+        </div>
+
+        <!-- 4. Real / Rear -->
+        <div class="thermal-card">
+          <div class="thermal-card-header">
+            <div class="t-zone-info">
+              <span class="t-zone-badge">Zone 4</span>
+              <h4>Rear / Real (ด้านหลัง)</h4>
+            </div>
+            <div class="t-zone-readouts">
+              <span class="t-act-readout" id="readoutActRear">- °C</span>
+              <span class="t-set-readout" id="readoutSetRear">Set: -</span>
+              <span class="t-delta-tag" id="deltaRear">Δ 0.0°</span>
+            </div>
+          </div>
+          <div class="mini-chart-container">
+            <canvas id="chartTempRear"></canvas>
+          </div>
+        </div>
+
+        <!-- 5. Hopper -->
+        <div class="thermal-card">
+          <div class="thermal-card-header">
+            <div class="t-zone-info">
+              <span class="t-zone-badge">Feed</span>
+              <h4>Hopper (กรวยป้อนเม็ด)</h4>
+            </div>
+            <div class="t-zone-readouts">
+              <span class="t-act-readout" id="readoutActHopper">- °C</span>
+              <span class="t-set-readout" id="readoutSetHopper">Set: -</span>
+              <span class="t-delta-tag" id="deltaHopper">Δ 0.0°</span>
+            </div>
+          </div>
+          <div class="mini-chart-container">
+            <canvas id="chartTempHopper"></canvas>
+          </div>
+        </div>
+
+        <!-- 6. Core Temp -->
+        <div class="thermal-card">
+          <div class="thermal-card-header">
+            <div class="t-zone-info">
+              <span class="t-zone-badge mold-badge">Mold</span>
+              <h4>Core Temp (แม่พิมพ์ฝั่งคอร์)</h4>
+            </div>
+            <div class="t-zone-readouts">
+              <span class="t-act-readout" id="readoutActCore">- °C</span>
+              <span class="t-set-readout" id="readoutSetCore">Set: -</span>
+              <span class="t-delta-tag" id="deltaCore">Δ 0.0°</span>
+            </div>
+          </div>
+          <div class="mini-chart-container">
+            <canvas id="chartTempCore"></canvas>
+          </div>
+        </div>
+
+        <!-- 7. Cavity Temp -->
+        <div class="thermal-card">
+          <div class="thermal-card-header">
+            <div class="t-zone-info">
+              <span class="t-zone-badge mold-badge">Mold</span>
+              <h4>Cavity Temp (แม่พิมพ์ฝั่งคาวิตี้)</h4>
+            </div>
+            <div class="t-zone-readouts">
+              <span class="t-act-readout" id="readoutActCavity">- °C</span>
+              <span class="t-set-readout" id="readoutSetCavity">Set: -</span>
+              <span class="t-delta-tag" id="deltaCavity">Δ 0.0°</span>
+            </div>
+          </div>
+          <div class="mini-chart-container">
+            <canvas id="chartTempCavity"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Secondary Split: Speed/Position Profile -->
+    <div class="panel-card">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <div class="icon-chip bg-indigo">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polygon points="12 8 8 12 12 16 12 8"></polygon>
+            </svg>
+          </div>
+          <div>
+            <h3>Injection Profile Settings (โปรไฟล์การฉีดและระยะสโตรก)</h3>
+            <span class="panel-sub">ความเร็ว สโตรก และจุดเปลี่ยนความดันย้ำ (V/P Change) ของรุ่นโมเดลล่าสุด</span>
+          </div>
+        </div>
+        <span class="badge badge-info" id="badgeCurrentModel">Model: -</span>
+      </div>
+
+      <div class="profile-details-grid" id="profileDetailsGrid">
+        <div class="param-box">
+          <span class="p-title">Shot Size Setting</span>
+          <span class="p-value" id="valShotSize">- mm</span>
+        </div>
+        <div class="param-box">
+          <span class="p-title">V/P Switch Position</span>
+          <span class="p-value text-amber" id="valVpChange">- mm</span>
+        </div>
+        <div class="param-box">
+          <span class="p-title">Speed Step 1</span>
+          <span class="p-value text-cyan" id="valSpeed1">- mm/s</span>
+        </div>
+        <div class="param-box">
+          <span class="p-title">Speed Step 2</span>
+          <span class="p-value text-cyan" id="valSpeed2">- mm/s</span>
+        </div>
+        <div class="param-box">
+          <span class="p-title">Position Step 1</span>
+          <span class="p-value" id="valPos1">- mm</span>
+        </div>
+        <div class="param-box">
+          <span class="p-title">Set Cooling Time</span>
+          <span class="p-value text-emerald" id="valCooling">- s</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Daily Records Data Table -->
+    <div class="panel-card table-panel">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <div class="icon-chip bg-slate">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+          </div>
+          <div>
+            <h2>Daily Records Log & Tolerance Alert Table</h2>
+            <span class="panel-sub">ตารางบันทึกรายวัน พร้อมการตรวจสอบค่าเบี่ยงเบน Setting vs Actual ทุกพารามิเตอร์</span>
+          </div>
+        </div>
+
+        <div class="table-search-box">
+          <input type="text" id="tableSearchInput" placeholder="ค้นหา วันที่, เครื่อง, รุ่น...">
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table" id="dailyDataTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Machine</th>
+              <th>Product Model</th>
+              <th>Peak Pressure (Act / Set)</th>
+              <th>Δ Pressure</th>
+              <th>Cushion (mm)</th>
+              <th>Fill Time (s)</th>
+              <th>Cycle Time (s)</th>
+              <th>Recovery (s)</th>
+              <th>Nozzle (Act/Set)</th>
+              <th>Cavity (Act/Set)</th>
+              <th>Process Status</th>
+            </tr>
+          </thead>
+          <tbody id="dataTableBody">
+            <!-- Rendered by app.js -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Drag & Drop Overlay -->
+  <div class="drop-overlay" id="dropOverlay">
+    <div class="drop-modal">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#00f2fe" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="17 8 12 3 7 8"></polyline>
+        <line x1="12" y1="3" x2="12" y2="15"></line>
+      </svg>
+      <h3>วางไฟล์ Excel (.xlsx) ที่นี่เพื่ออัปเดตข้อมูล</h3>
+      <p>ระบบจะอ่านไฟล์และอัปเดตผลการแสดงผลทันที</p>
+    </div>
+  </div>
+
+  <!-- Security Access Gate Overlay (Password Protection) -->
+  <div class="auth-overlay" id="authOverlay">
+    <div class="auth-card">
+      <div class="auth-icon-wrap">
+        <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#00f2fe" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h2>SECURITY ACCESS REQUIRED</h2>
+      <p class="auth-sub">Precision Injection Monitor & Telemetry</p>
+      
+      <form id="authForm" class="auth-form" onsubmit="return false;">
+        <div class="auth-input-group">
+          <input type="password" id="authPasswordInput" placeholder="กรอกรหัสผ่านเพื่อเข้าใช้งาน..." autocomplete="current-password" autofocus>
+          <button type="button" class="btn-toggle-pw" id="btnTogglePw" title="แสดง/ซ่อนรหัสผ่าน">
+            <svg id="eyeIcon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+
+        <div class="auth-options">
+          <label class="remember-label">
+            <input type="checkbox" id="authRememberCheckbox" checked>
+            <span>จำอุปกรณ์นี้ไว้ (ไม่ต้องกรอกซ้ำบนเครื่องนี้)</span>
+          </label>
+        </div>
+
+        <div class="auth-error-msg" id="authErrorMsg"></div>
+
+        <button type="submit" class="btn btn-primary btn-unlock" id="btnUnlock">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+          </svg>
+          ยืนยันรหัสผ่าน (Unlock System)
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Core JavaScript -->
+  <script src="app.js"></script>
+</body>
+</html>

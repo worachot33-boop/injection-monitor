@@ -1349,3 +1349,12 @@ body.dark-theme {
     flex: 1 1 100%;
   }
 }
+
+.spin-animation {
+  animation: spinSync 0.9s linear infinite;
+}
+
+@keyframes spinSync {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

@@ -120,61 +120,134 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * Load Data from localStorage (Cache) or Auto-fetch default Excel file
+ * Find the latest Excel filename in the repository or local folder
+ */
+async function resolveLatestExcelFileName() {
+  const candidates = [
+    '20261007_injection monitor_R2.xlsx',
+    '20261007_injection monitor_R3.xlsx',
+    '20261007_injection monitor_R4.xlsx',
+    '20261007_injection monitor_R1.xlsx',
+    'injection_monitor.xlsx',
+    'data.xlsx'
+  ];
+
+  // If running on GitHub Pages, try fetching the repo file tree to find the newest .xlsx automatically
+  if (window.location.hostname.includes('github.io')) {
+    try {
+      const res = await fetch('https://api.github.com/repos/worachot33-boop/injection-monitor/contents/?_t=' + Date.now());
+      if (res.ok) {
+        const files = await res.json();
+        const xlsxFiles = files
+          .filter(f => f.name && f.name.toLowerCase().endsWith('.xlsx'))
+          .map(f => f.name)
+          .sort()
+          .reverse(); // Newest revision first (e.g. R3 > R2 > R1)
+        if (xlsxFiles.length > 0) {
+          return xlsxFiles[0];
+        }
+      }
+    } catch (e) {
+      console.warn('GitHub API check failed, falling back to candidates list', e);
+    }
+  }
+
+  // Probe candidate list
+  for (const name of candidates) {
+    try {
+      const testRes = await fetch(encodeURI(name) + '?_t=' + Date.now(), { method: 'HEAD' });
+      if (testRes.ok) return name;
+    } catch (e) {}
+  }
+
+  return '20261007_injection monitor_R2.xlsx';
+}
+
+/**
+ * Load Stored Data (Instant Cache + Always Background Sync)
  */
 async function loadStoredData() {
   const cached = localStorage.getItem('precision_injection_data_r1');
+  let hasCache = false;
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed) && parsed.length > 4) {
+      if (Array.isArray(parsed) && parsed.length > 0) {
         state.rawDataset = parsed;
+        hasCache = true;
         updateSyncStatus(`Loaded ${state.rawDataset.length} records (from cache)`);
-        return;
       }
     } catch (e) {
       console.warn('Error reading local cache', e);
     }
   }
 
-  // Auto-fetch default Excel file (20261007_injection monitor_R1.xlsx)
-  updateSyncStatus('กำลังโหลดข้อมูลมาตรฐานจาก Excel...');
-  const success = await loadDefaultExcelFile();
-  if (!success) {
-    // Fallback to initial demo seed
+  if (!hasCache) {
     state.rawDataset = [...INITIAL_DEMO_DATA];
-    saveToLocalStorage();
-    updateSyncStatus(`Loaded ${state.rawDataset.length} records (Demo Seed)`);
+    updateSyncStatus('กำลังค้นหาข้อมูลล่าสุดจาก Excel...');
   }
+
+  // Always sync latest file from GitHub/Server in background
+  setTimeout(() => {
+    syncLatestExcelData(false);
+  }, 200);
 }
 
 /**
- * Fetch and parse default Excel file asynchronously
+ * Sync Latest Excel Data (Bypasses browser cache with timestamp buster)
  */
-async function loadDefaultExcelFile() {
+async function syncLatestExcelData(isManual = false) {
+  const syncSvg = document.getElementById('syncIconSvg');
+  if (syncSvg) syncSvg.classList.add('spin-animation');
+  if (isManual) updateSyncStatus('กำลังซิงค์ข้อมูลล่าสุดจาก GitHub...');
+
   try {
-    const fileName = '20261007_injection monitor_R1.xlsx';
-    const res = await fetch(encodeURI(fileName));
+    const fileName = await resolveLatestExcelFileName();
+    const cacheBuster = Date.now();
+    const res = await fetch(encodeURI(fileName) + '?_t=' + cacheBuster, {
+      cache: 'no-store'
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
     const buffer = await res.arrayBuffer();
     const data = new Uint8Array(buffer);
     if (typeof XLSX === 'undefined') {
-      console.warn('XLSX library not ready yet');
+      console.warn('SheetJS library not yet loaded');
       return false;
     }
+
     const workbook = XLSX.read(data, { type: 'array' });
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
     const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: null });
     const parsedRecords = parseExcelRows(jsonRows);
+
     if (parsedRecords && parsedRecords.length > 0) {
+      const isDifferent = state.rawDataset.length !== parsedRecords.length ||
+                          JSON.stringify(state.rawDataset[0]) !== JSON.stringify(parsedRecords[0]);
+
       state.rawDataset = parsedRecords;
       saveToLocalStorage();
+      populateMachineDropdown();
+      applyFiltersAndRender();
       updateSyncStatus(`Data Source: ${fileName} (${parsedRecords.length} records)`);
+
+      if (isManual) {
+        showToast(`ซิงค์ข้อมูลสำเร็จ! โหลด ${parsedRecords.length} แถวจาก ${fileName}`, 'success');
+      } else if (isDifferent) {
+        showToast(`🔔 ตรวจพบไฟล์ใหม่ (${fileName}): อัปเดตข้อมูล ${parsedRecords.length} แถวเรียบร้อย`, 'success');
+      }
       return true;
     }
   } catch (err) {
-    console.warn('Could not auto-fetch default Excel file:', err);
+    console.warn('Could not sync latest Excel file:', err);
+    if (isManual) {
+      showToast(`ไม่สามารถซิงค์ไฟล์ได้: ${err.message}`, 'error');
+    }
+  } finally {
+    if (syncSvg) {
+      setTimeout(() => syncSvg.classList.remove('spin-animation'), 600);
+    }
   }
   return false;
 }
@@ -1252,6 +1325,14 @@ function initEventHandlers() {
           document.exitFullscreen();
         }
       }
+    });
+  }
+
+  // Force Sync Latest Excel Data
+  const btnSyncData = document.getElementById('btnSyncData');
+  if (btnSyncData) {
+    btnSyncData.addEventListener('click', () => {
+      syncLatestExcelData(true);
     });
   }
 }
